@@ -99,7 +99,7 @@ void setup() {
         sendToDisplay(0,30,pwd);
       }
     }
-    // close file
+    // close the file
     dataFile.close();
   }
   
