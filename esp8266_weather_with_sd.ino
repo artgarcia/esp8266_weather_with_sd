@@ -4,6 +4,8 @@
    This project will connect an ESP8266 to a display and DHT11 Temperature sensor
    The data will then be sent to Azure and an alert will be generated
    DEVICE : Node MCU ESP8266 (0.9)
+   
+   3-10-17 : added url and device id to sd card reader
 */
 
 
@@ -18,6 +20,9 @@
 
 // include SD library
 #include <SD.h>
+
+// new ping
+#include <NewPing.h>
 
 // Include the correct display library
 // For a connection via I2C using Wire include
@@ -40,11 +45,19 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-File dataFile;
+//File dataFile;
  
-String str,netid,pwd;
+String netid,pwd,deviceId,url;
 long duration, distance, lastDistance;
 
+String passData[4];
+
+
+#define TRIGGER_PIN 1
+#define ECHO_PIN 3
+#define MAX_DISTANCE 400
+
+NewPing sonar(TRIGGER_PIN,ECHO_PIN,MAX_DISTANCE);
 
 void setup() {
 
@@ -65,67 +78,78 @@ void setup() {
   display.setTextColor(WHITE);
   sendToDisplay(0,0,"Init SD Card");
   
-   // initialize sd card 
-   // for nodemcu use begin() else use begin(4)
-    Serial.print("Initializing SD card...");
-    if (!SD.begin()) {
-      Serial.println("initialization failed!");
-      return;
-    }
-    Serial.println("initialization done.");
-  
-  // open the file. note that only one file can be open at a time,
-  // so you have to close this one before opening another.
-  dataFile = SD.open("wifiFile.txt");
-  int index=0;
-  
-  if(dataFile)
-  {
-  Serial.println("data from sd card");
-    while(dataFile.available())
-    {
-      if (dataFile.find("SSID:"))
-      {
-        str = dataFile.readStringUntil('|');
-        netid = str;
-        Serial.println(netid);
-        sendToDisplay(0,15,netid);
-      }
-      if (dataFile.find("PASSWORD:"))
-      {
-        str = dataFile.readStringUntil('|');
-        pwd = str;
-        Serial.println(pwd);
-        sendToDisplay(0,30,pwd);
-      }
-    }
-    // close the file
-    dataFile.close();
-  }
-  
+  // get data from sd card
+  // passing an array to house sd card information
+  getSDData(passData);
+ 
+  // move sd card data to global variables
+  netid = passData[0];
+  pwd = passData[1];
+  deviceId = passData[2];
+  url = passData[3];
+
+  // verify variables from sd card got into globals
+  Serial.print("NETID:");
+  Serial.println(netid);
+  Serial.print("PWD:");
+  Serial.println(pwd);
+  Serial.print("DEVICEID:");
+  Serial.println(deviceId);
+  Serial.print("URL:");
+  Serial.println(url);
+
   // initialize wifi
   WiFi.begin( (const char*)netid.c_str() , (const char*)pwd.c_str() );
-  Serial.print("SSID:");
+
+  display.clearDisplay();
+  Serial.print("Connecting to SSID:");
   Serial.println(WiFi.SSID());
   Serial.println(WiFi.macAddress() );
   
+  sendToDisplay(0, 0, "Connecting to SSID:");
+  display.println();
+  display.println(netid);
+  display.display();
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+	
+	switch (WiFi.status())	
+	{
+	case WL_CONNECTION_LOST:
+		Serial.println("Connection Lost");
+		break;
+	case WL_CONNECT_FAILED:
+		Serial.println("Connection Failed");
+		break;
+	case WL_DISCONNECTED:
+		Serial.println(" Not Connected");
+		break;
+	default:
+		Serial.print("Status:");
+		Serial.println(WiFi.status());
+		break;
+	}
+
     display.print("...");
     display.display();
+
   }
 
   // confirm connection to WiFi
   Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
   
   display.clearDisplay();
   sendToDisplay(0,0,"Connected:");
   display.println( netid );
   display.display();
+
+  //Define inputs and outputs
+  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
   
   // start temp sensor
   dht.begin();
@@ -139,13 +163,16 @@ void setup() {
 
 void loop() {
 
+  Serial.println("");
+  Serial.println("Loop");
+
   timeClient.update();
   Serial.println(timeClient.getEpochTime());
 
   display.clearDisplay();
   display.setCursor(0,0);
   display.setTextSize(1);
-  display.println( "Temperature esp8266v2");
+  display.println( "Temperature :" + deviceId);
 
   float humidity = dht.readHumidity();
   delay(200);
@@ -153,8 +180,7 @@ void loop() {
   // fahrenheit = t * 1.8 + 32.0;
   float temp = t *1.8 + 32;
   delay(200);
-
- 
+  
   display.setCursor(0,18);
   display.print( "Temp:");
   display.println(String(temp));
@@ -174,18 +200,24 @@ void loop() {
   String key = (String)timeClient.getEpochTime();
   
   // format data into Json object to pass to Azure
-  String tempJson = createJsonData("esp8266v2", temp, humidity,key);
+  String tempJson = createJsonData(deviceId, temp, humidity,key);
  
   // send json to Azure
-  httpRequest("POST", uri, "application/atom+xml;type=entry;charset=utf-8", tempJson);
+  httpRequest("POST", url, "application/atom+xml;type=entry;charset=utf-8", tempJson);
   
   display.println();
   display.print("Json Sent:");
   display.println(tempJson);
   display.display();
   
+  Serial.print("Json Sent:");
+  Serial.println(tempJson);
+  
   //delay(60000);   // delay 60000 miliseconds = 60 sec
-   delay(20000);
+   delay(10000);
+
+   Serial.println("Get Distance");
+   getDistance(TRIGGER_PIN,ECHO_PIN);
 }
 
 void sendToDisplay( int col,int row, String data)

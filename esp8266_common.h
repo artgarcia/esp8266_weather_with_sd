@@ -9,7 +9,7 @@ WiFiClientSecure client;
 // endpoint to use to send message /devices/{device name}/messages/events?api-version=2016-02-03
 // host name address for your Azure IoT Hub
 // on device monitor generate a sas token on config page.
-String uri = "/devices/esp8266v1/messages/events?api-version=2016-02-03";
+//String uri = "/devices/esp8266v2/messages/events?api-version=2016-02-03";
 char hostnme[] = "ArtTempIOT.azure-devices.net";
 char authSAS[] = "SharedAccessSignature sr=ArtTempIOT.azure-devices.net&sig=vmUF6p3IANfHmNWrvk4Zf%2BlpngD365hUX9f%2FB2zNaUM%3D&se=1515799811&skn=iothubowner";
 
@@ -100,6 +100,107 @@ void httpRequest(String verb, String uri, String contentType, String content)
 	Serial.println("--- Send complete ----");
 }
 
+void getDistance(int TRIGGER_PIN,int ECHO_PIN)
+{
+  long duration, cm, inches;
+  Serial.println("In GetDistance");
+  Serial.print("trigger:");
+  Serial.println(TRIGGER_PIN);
+  
+  Serial.print("Echo:");
+  Serial.println(ECHO_PIN);
+  
+  // The sensor is triggered by a HIGH pulse of 10 or more microseconds.
+  // Give a short LOW pulse beforehand to ensure a clean HIGH pulse:
+  digitalWrite(TRIGGER_PIN, LOW);
+  delayMicroseconds(5);
+  digitalWrite(TRIGGER_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGGER_PIN, LOW);
+  
+  // Read the signal from the sensor: a HIGH pulse whose
+  // duration is the time (in microseconds) from the sending
+  // of the ping to the reception of its echo off of an object.
+  pinMode(ECHO_PIN, INPUT);
+  duration = pulseIn(ECHO_PIN, HIGH);
 
+  // convert the time into a distance
+  cm = (duration/2) / 29.1;
+  inches = (duration/2) / 74; 
+
+  Serial.print(inches);
+  Serial.print("in, ");
+  Serial.print(cm);
+  Serial.print("cm");
+  Serial.println();
+
+}
+
+void getSDData(String *passData)
+{
+	String str, netid, pwd, deviceId, url;
+
+	File dataFile;
+	Serial.println("In getSDData");
+
+	// initialize sd card 
+	// for nodemcu use begin() else use begin(4)
+	Serial.print("Initializing SD card...");
+
+	if (!SD.begin()) {
+		Serial.println("initialization failed!");
+		return;
+	}
+	Serial.println("initialization done.");
+
+	// open the file. note that only one file can be open at a time,
+	// so you have to close this one before opening another.
+	dataFile = SD.open("wifiFile.txt");
+	int index = 0;
+
+	if (dataFile)
+	{
+		Serial.println("data from sd card");
+		while (dataFile.available())
+		{
+			if (dataFile.find("SSID:"))
+			{
+				str = dataFile.readStringUntil('|');
+				netid = str;
+				Serial.println(netid);
+				sendToDisplay(0, 15, netid);
+			}
+			if (dataFile.find("PASSWORD:"))
+			{
+				str = dataFile.readStringUntil('|');
+				pwd = str;
+				Serial.println(pwd);
+				sendToDisplay(30, 15, pwd);
+			}
+			if (dataFile.find("DEVICEID:"))
+			{
+				str = dataFile.readStringUntil('|');
+				deviceId = str;
+				Serial.println(deviceId);
+				sendToDisplay(0, 30, deviceId);
+			}
+			if (dataFile.find("URL:"))
+			{
+				str = dataFile.readStringUntil('|');
+				url = str;
+				Serial.println(url);
+				sendToDisplay(50, 30, url);
+			}
+		}
+		// close the file
+		dataFile.close();
+	}
+	passData[0] = netid;
+	passData[1] = pwd;
+	passData[2] = deviceId;
+	passData[3] = url;
+
+
+}
 
 
