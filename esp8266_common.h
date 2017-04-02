@@ -1,5 +1,11 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <ArduinoJson.h>
+#include <SD.h>
+
+// Include the correct display library
+// For a connection via I2C using Wire include
+#include <SPI.h>
 
 WiFiUDP ntpUDP;
 
@@ -20,6 +26,7 @@ NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
   
 // declare json functions
 String createJsonData(String devId, float temp ,float humidity,String keyid);
+
 
 
 String createJsonData(String devId, float temp, float humidity,String keyid)
@@ -202,5 +209,7 @@ void getSDData(String *passData)
 
 
 }
+
+
 
 

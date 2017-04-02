@@ -10,13 +10,11 @@
 
 
 // include wifi library for nodemcu 8266
+
 #include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
 #include <ESP8266WiFi.h>
 // need this lib for Secure SSL for ESP 8266 chip
 #include <WiFiClientSecure.h>  
-
-// json library
-#include <ArduinoJson.h>
 
 // include SD library
 #include <SD.h>
@@ -27,13 +25,12 @@
 // Include the correct display library
 // For a connection via I2C using Wire include
 #include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-//
-// D2 -> SDA
-// D1 -> SCL
-#define OLED_RESET LED_BUILTIN //4
-Adafruit_SSD1306 display(OLED_RESET);
+
+// http://easycoding.tn/tuniot/demos/code/
+// D3 -> SDA
+// D4 -> SCL      display( address of display, SDA,SCL)
+#include "SSD1306.h"
+SSD1306  display(0x3C, 2, 0);
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
@@ -41,7 +38,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 // for dht11 temp sensor on esp8266 chip
 #include <DHT.h>
-#define DHTPIN 2  //D4 on nodemcu
+#define DHTPIN 4 //D4 on nodemcu 2
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -69,13 +66,15 @@ void setup() {
   // Show image buffer on the display hardware.
   // Since the buffer is intialized with an Adafruit splashscreen
   // internally, this will display the splashscreen.
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
-  display.display();
+  // stup for display
+  display.init();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+
+  sendToDisplay(0, 0, "Screen Init");
   delay(2000);
   
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
   sendToDisplay(0,0,"Init SD Card");
   
   // get data from sd card
@@ -99,17 +98,15 @@ void setup() {
   Serial.println(url);
 
   // initialize wifi
+  WiFi.disconnect();
   WiFi.begin( (const char*)netid.c_str() , (const char*)pwd.c_str() );
 
-  display.clearDisplay();
+  display.clear();
   Serial.print("Connecting to SSID:");
   Serial.println(WiFi.SSID());
   Serial.println(WiFi.macAddress() );
   
-  sendToDisplay(0, 0, "Connecting to SSID:");
-  display.println();
-  display.println(netid);
-  display.display();
+  sendToDisplay(0, 0, "Connecting:" + netid);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -132,8 +129,7 @@ void setup() {
 		break;
 	}
 
-    display.print("...");
-    display.display();
+    sendToDisplay(0,15,"...");
 
   }
 
@@ -142,14 +138,12 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
   
-  display.clearDisplay();
-  sendToDisplay(0,0,"Connected:");
-  display.println( netid );
-  display.display();
+  display.clear();
+  sendToDisplay(0,0,"Connected:" + netid);
 
   //Define inputs and outputs
-  pinMode(TRIGGER_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+  //pinMode(TRIGGER_PIN, OUTPUT);
+  //pinMode(ECHO_PIN, INPUT);
   
   // start temp sensor
   dht.begin();
@@ -169,10 +163,8 @@ void loop() {
   timeClient.update();
   Serial.println(timeClient.getEpochTime());
 
-  display.clearDisplay();
-  display.setCursor(0,0);
-  display.setTextSize(1);
-  display.println( "Temperature :" + deviceId);
+  display.clear();
+  sendToDisplay(0,0, "Temp from:" + deviceId);
 
   float humidity = dht.readHumidity();
   delay(200);
@@ -181,17 +173,11 @@ void loop() {
   float temp = t *1.8 + 32;
   delay(200);
   
-  display.setCursor(0,18);
-  display.print( "Temp:");
-  display.println(String(temp));
-  display.display();
+  sendToDisplay(0, 18, "Temp:" + String(temp));
 
-  display.print( "Humidity:");
-  display.print( String(humidity));
-  display.println( "%");
-  display.display();
+  sendToDisplay(0, 32, "Humidity:" + String(humidity) + "%" );
 
-  Serial.print("Temp:");
+  Serial.print("Temperature:");
   Serial.println(temp);
 
   Serial.print("Humidity:");
@@ -200,15 +186,14 @@ void loop() {
   String key = (String)timeClient.getEpochTime();
   
   // format data into Json object to pass to Azure
+  //String myKeys[] = { "deviceId","Temp","Humidity","KeyValue" };
+
   String tempJson = createJsonData(deviceId, temp, humidity,key);
  
   // send json to Azure
   httpRequest("POST", url, "application/atom+xml;type=entry;charset=utf-8", tempJson);
   
-  display.println();
-  display.print("Json Sent:");
-  display.println(tempJson);
-  display.display();
+  sendToDisplay(0,45,"key:" + key);
   
   Serial.print("Json Sent:");
   Serial.println(tempJson);
@@ -222,8 +207,7 @@ void loop() {
 
 void sendToDisplay( int col,int row, String data)
 {
-    display.setCursor(col,row);
-    display.print(data);
+	display.drawString(col, row, data);
     display.display();
 }
 
