@@ -1,33 +1,27 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
-#include <SD.h>
+//#include <SD.h>
 
 // Include the correct display library
 // For a connection via I2C using Wire include
-#include <SPI.h>
+//#include <SPI.h>
 
 WiFiUDP ntpUDP;
 
 // setup https client for 8266 SSL client
 WiFiClientSecure client;
 
-// endpoint to use to send message /devices/{device name}/messages/events?api-version=2016-02-03
-// host name address for your Azure IoT Hub
-// on device monitor generate a sas token on config page.
-//String uri = "/devices/esp8266v2/messages/events?api-version=2016-02-03";
-char hostnme[] = "ArtTempIOT.azure-devices.net";
-char authSAS[] = "SharedAccessSignature sr=ArtTempIOT.azure-devices.net&sig=vmUF6p3IANfHmNWrvk4Zf%2BlpngD365hUX9f%2FB2zNaUM%3D&se=1515799811&skn=iothubowner";
 
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
   
-// declare json functions
+// declare functions
 String createJsonData(String devId, float temp ,float humidity,String keyid);
-
-
+void sendToDisplay(int col, int row, String data);
+void sendToDisplay(int col, int row, int len, String data);
 
 String createJsonData(String devId, float temp, float humidity,String keyid)
 {
@@ -49,8 +43,7 @@ String createJsonData(String devId, float temp, float humidity,String keyid)
 
 }
 
-
-void httpRequest(String verb, String uri, String contentType, String content)
+void httpRequest(String verb, String uri, String host, String sas, String contentType, String content)
 {
 	Serial.println("--- Start Process --- ");
 	if (verb.equals("")) return;
@@ -61,10 +54,10 @@ void httpRequest(String verb, String uri, String contentType, String content)
 	client.stop();
 
 	// if there's a successful connection:
-	if (client.connect(hostnme, 443)) {
+	if (client.connect((const char*)host.c_str(), 443)) {
 		Serial.println("--- We are Connected --- ");
 		Serial.print("*** Sending Data To:  ");
-		Serial.println(hostnme + uri);
+		Serial.println(host + uri);
 
 		Serial.print("*** Data To Send:  ");
 		Serial.println(content);
@@ -73,11 +66,12 @@ void httpRequest(String verb, String uri, String contentType, String content)
 		client.print(" ");
 		client.print(uri);  // any of the URI
 		client.println(" HTTP/1.1");
+
 		client.print("Host: ");
-		client.println(hostnme);  //with hostname header
+		client.println((const char*)host.c_str());  //with hostname header
+
 		client.print("Authorization: ");
-		client.println(authSAS);  //Authorization SAS token obtained from Azure IoT device explorer
-								  //client.println("Connection: close");
+		client.println((const char*)sas.c_str());  //Authorization SAS token obtained from Azure IoT device explorer
 
 		if (verb.equals("POST"))
 		{
@@ -107,45 +101,9 @@ void httpRequest(String verb, String uri, String contentType, String content)
 	Serial.println("--- Send complete ----");
 }
 
-void getDistance(int TRIGGER_PIN,int ECHO_PIN)
-{
-  long duration, cm, inches;
-  Serial.println("In GetDistance");
-  Serial.print("trigger:");
-  Serial.println(TRIGGER_PIN);
-  
-  Serial.print("Echo:");
-  Serial.println(ECHO_PIN);
-  
-  // The sensor is triggered by a HIGH pulse of 10 or more microseconds.
-  // Give a short LOW pulse beforehand to ensure a clean HIGH pulse:
-  digitalWrite(TRIGGER_PIN, LOW);
-  delayMicroseconds(5);
-  digitalWrite(TRIGGER_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIGGER_PIN, LOW);
-  
-  // Read the signal from the sensor: a HIGH pulse whose
-  // duration is the time (in microseconds) from the sending
-  // of the ping to the reception of its echo off of an object.
-  pinMode(ECHO_PIN, INPUT);
-  duration = pulseIn(ECHO_PIN, HIGH);
-
-  // convert the time into a distance
-  cm = (duration/2) / 29.1;
-  inches = (duration/2) / 74; 
-
-  Serial.print(inches);
-  Serial.print("in, ");
-  Serial.print(cm);
-  Serial.print("cm");
-  Serial.println();
-
-}
-
 void getSDData(String *passData)
 {
-	String str, netid, pwd, deviceId, url;
+	String str, netid, pwd, deviceId, url, hostname, sas;
 
 	File dataFile;
 	Serial.println("In getSDData");
@@ -168,6 +126,9 @@ void getSDData(String *passData)
 	if (dataFile)
 	{
 		Serial.println("data from sd card");
+		display.clear();
+		sendToDisplay(0, 0, "Data From Card");
+
 		while (dataFile.available())
 		{
 			if (dataFile.find("SSID:"))
@@ -182,34 +143,58 @@ void getSDData(String *passData)
 				str = dataFile.readStringUntil('|');
 				pwd = str;
 				Serial.println(pwd);
-				sendToDisplay(30, 15, pwd);
+				//sendToDisplay(0,30, pwd);
 			}
 			if (dataFile.find("DEVICEID:"))
 			{
 				str = dataFile.readStringUntil('|');
 				deviceId = str;
 				Serial.println(deviceId);
-				sendToDisplay(0, 30, deviceId);
+				sendToDisplay(0,30, deviceId);
 			}
 			if (dataFile.find("URL:"))
 			{
 				str = dataFile.readStringUntil('|');
 				url = str;
 				Serial.println(url);
-				sendToDisplay(50, 30, url);
+				//sendToDisplay(50, 30, url);
+			}
+			if (dataFile.find("HOSTNAME:"))
+			{
+				str = dataFile.readStringUntil('|');
+				hostname = str;
+				Serial.println(hostname);
+				sendToDisplay(0, 45, hostname);
+			}
+			if (dataFile.find("SAS:"))
+			{
+				str = dataFile.readStringUntil('|');
+				sas = str;
+				Serial.println(sas);
 			}
 		}
 		// close the file
 		dataFile.close();
 	}
+
 	passData[0] = netid;
 	passData[1] = pwd;
 	passData[2] = deviceId;
 	passData[3] = url;
-
+	passData[4] = hostname;
+	passData[5] = sas;
 
 }
 
+void sendToDisplay(int col, int row, String data)
+{
+	display.drawString(col, row, data);
+	display.display();
+}
 
-
+void sendToDisplay(int col, int row,int len, String data)
+{
+	display.drawStringMaxWidth(col, row,len, data);
+	display.display();
+}
 

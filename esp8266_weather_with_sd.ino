@@ -4,8 +4,11 @@
    This project will connect an ESP8266 to a display and DHT11 Temperature sensor
    The data will then be sent to Azure and an alert will be generated
    DEVICE : Node MCU ESP8266 (0.9)
-   
+          : SD card reader Micro SD adaptor
+
    3-10-17 : added url and device id to sd card reader
+   4-16-07 : cleaned up code and moved sendtodisplay function th common
+           : removed host and sas token from code. made data inputs from sd card
 */
 
 
@@ -19,18 +22,15 @@
 // include SD library
 #include <SD.h>
 
-// new ping
-#include <NewPing.h>
-
 // Include the correct display library
 // For a connection via I2C using Wire include
 #include <SPI.h>
 
 // http://easycoding.tn/tuniot/demos/code/
-// D3 -> SDA
-// D4 -> SCL      display( address of display, SDA,SCL)
+// D2 -> SDA
+// D1 -> SCL      display( address of display, SDA,SCL)
 #include "SSD1306.h"
-SSD1306  display(0x3C, 2, 0);
+SSD1306  display(0x3C, 4, 5);
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
@@ -38,23 +38,13 @@ SSD1306  display(0x3C, 2, 0);
 
 // for dht11 temp sensor on esp8266 chip
 #include <DHT.h>
-#define DHTPIN 4 //D4 on nodemcu 2
+#define DHTPIN 2 // D4 on nodemcu = gpio 2 
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-//File dataFile;
- 
-String netid,pwd,deviceId,url;
+String netid, pwd, deviceId, url, host, sas;
 long duration, distance, lastDistance;
-
-String passData[4];
-
-
-#define TRIGGER_PIN 1
-#define ECHO_PIN 3
-#define MAX_DISTANCE 400
-
-NewPing sonar(TRIGGER_PIN,ECHO_PIN,MAX_DISTANCE);
+String passData[6];
 
 void setup() {
 
@@ -75,7 +65,7 @@ void setup() {
   sendToDisplay(0, 0, "Screen Init");
   delay(2000);
   
-  sendToDisplay(0,0,"Init SD Card");
+  sendToDisplay(0,15,"Init SD Card");
   
   // get data from sd card
   // passing an array to house sd card information
@@ -86,6 +76,18 @@ void setup() {
   pwd = passData[1];
   deviceId = passData[2];
   url = passData[3];
+
+  // endpoint to use to send message /devices/{device name}/messages/events?api-version=2016-02-03
+  // host =  address for your Azure IoT Hub
+  // sas  =  sas authorization token from below
+  //
+  // on device monitor generate a sas token on config page.
+  //String uri = "/devices/esp8266v2/messages/events?api-version=2016-02-03";
+  host = passData[4];
+  sas = passData[5];
+
+  // replace device id in url 
+  url.replace("{0}", deviceId);
 
   // verify variables from sd card got into globals
   Serial.print("NETID:");
@@ -140,19 +142,19 @@ void setup() {
   
   display.clear();
   sendToDisplay(0,0,"Connected:" + netid);
+  sendToDisplay(0, 15, "IP:" + WiFi.localIP().toString());
+  delay(1000);
 
-  //Define inputs and outputs
-  //pinMode(TRIGGER_PIN, OUTPUT);
-  //pinMode(ECHO_PIN, INPUT);
-  
   // start temp sensor
   dht.begin();
-  
+  sendToDisplay(0, 30, "Sensor Begin");
+
   // start time client - used to get curren time.
   timeClient.begin();
+  sendToDisplay(0, 45, "TimeClient Begin");
+  delay(1000);
 
 }
-
 
 
 void loop() {
@@ -161,54 +163,45 @@ void loop() {
   Serial.println("Loop");
 
   timeClient.update();
-  Serial.println(timeClient.getEpochTime());
+  String key = (String)timeClient.getEpochTime();
+  Serial.println(key);
 
   display.clear();
-  sendToDisplay(0,0, "Temp from:" + deviceId);
+  sendToDisplay(0, 0, "Temp from:" + deviceId);
 
-  float humidity = dht.readHumidity();
-  delay(200);
   float t = dht.readTemperature();
   // fahrenheit = t * 1.8 + 32.0;
   float temp = t *1.8 + 32;
   delay(200);
-  
-  sendToDisplay(0, 18, "Temp:" + String(temp));
+  sendToDisplay(0, 15, "Temp:" + String(temp));
 
-  sendToDisplay(0, 32, "Humidity:" + String(humidity) + "%" );
+  float humidity = dht.readHumidity();
+  delay(200);
+  sendToDisplay(60, 15, "Hum:" + String(humidity) + "%" );
 
   Serial.print("Temperature:");
   Serial.println(temp);
 
   Serial.print("Humidity:");
   Serial.println(humidity);
-
-  String key = (String)timeClient.getEpochTime();
   
   // format data into Json object to pass to Azure
   //String myKeys[] = { "deviceId","Temp","Humidity","KeyValue" };
-
   String tempJson = createJsonData(deviceId, temp, humidity,key);
  
   // send json to Azure
-  httpRequest("POST", url, "application/atom+xml;type=entry;charset=utf-8", tempJson);
-  
-  sendToDisplay(0,45,"key:" + key);
-  
+  httpRequest("POST", url, host, sas, "application/atom+xml;type=entry;charset=utf-8", tempJson);
+
+  sendToDisplay(0,30, 150,tempJson);
   Serial.print("Json Sent:");
   Serial.println(tempJson);
   
-  //delay(60000);   // delay 60000 miliseconds = 60 sec
-   delay(10000);
+   delay(6000);   // delay 60000 miliseconds = 60 sec
 
-   Serial.println("Get Distance");
-   getDistance(TRIGGER_PIN,ECHO_PIN);
 }
 
-void sendToDisplay( int col,int row, String data)
-{
-	display.drawString(col, row, data);
-    display.display();
-}
+
+
+
 
 
