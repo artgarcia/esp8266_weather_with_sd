@@ -85,6 +85,9 @@
     </ClInclude>
     <ClInclude Include="__vm\.esp8266_weather_with_sd.vsarduino.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="WiFiFile.txt" />
+  </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
   </PropertyGroup>
