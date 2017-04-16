@@ -9,6 +9,7 @@
    3-10-17 : added url and device id to sd card reader
    4-16-07 : cleaned up code and moved sendtodisplay function th common
            : removed host and sas token from code. made data inputs from sd card
+		   : added code to work on both huzzah and node mcu
 */
  
 
@@ -30,7 +31,8 @@
 // D2 -> SDA
 // D1 -> SCL      display( address of display, SDA,SCL)
 #include "SSD1306.h"
-SSD1306  display(0x3C, 4, 5);
+//SSD1306  display(0x3C, 4, 5);  // for node mcu  d1-<scl , d2->sda
+SSD1306  display(0x3C, 5, 0);  // for huzzah SDL ->gpio 0, SDA->gpio 5
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
@@ -38,7 +40,9 @@ SSD1306  display(0x3C, 4, 5);
 
 // for dht11 temp sensor on esp8266 chip
 #include <DHT.h>
-#define DHTPIN 2 // D4 on nodemcu = gpio 2 
+//#define DHTPIN 2 // D4 on nodemcu = gpio 2 
+#define DHTPIN 4 // on huzzah gpio 4 
+
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
