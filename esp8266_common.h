@@ -183,7 +183,7 @@ void getSDData(String *passData)
 	passData[3] = url;
 	passData[4] = hostname;
 	passData[5] = sas;
-
+	 
 }
 
 void sendToDisplay(int col, int row, String data)
