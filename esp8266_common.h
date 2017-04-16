@@ -103,7 +103,7 @@ void httpRequest(String verb, String uri, String host, String sas, String conten
 
 void getSDData(String *passData)
 {
-	String str, netid, pwd, deviceId, url, hostname, sas;
+	String str, netid, pwd, deviceId, url, hostname, sas, delay ;
 
 	File dataFile;
 	Serial.println("In getSDData");
@@ -172,6 +172,12 @@ void getSDData(String *passData)
 				sas = str;
 				Serial.println(sas);
 			}
+			if (dataFile.find("DELAY:"))
+			{
+				str = dataFile.readStringUntil('|');
+				delay = str;
+				Serial.println(delay);
+			}
 		}
 		// close the file
 		dataFile.close();
@@ -183,6 +189,7 @@ void getSDData(String *passData)
 	passData[3] = url;
 	passData[4] = hostname;
 	passData[5] = sas;
+	passData[6] = delay;
 	 
 }
 

@@ -48,7 +48,8 @@ DHT dht(DHTPIN, DHTTYPE);
 
 String netid, pwd, deviceId, url, host, sas;
 long duration, distance, lastDistance;
-String passData[6];
+int delayMls = 6000;
+String passData[7];
 
 void setup() {
 
@@ -89,6 +90,9 @@ void setup() {
   //String uri = "/devices/esp8266v2/messages/events?api-version=2016-02-03";
   host = passData[4];
   sas = passData[5];
+
+  // get delay between readings in milliseconds
+  delayMls = passData[6].toInt();
 
   // replace device id in url 
   url.replace("{0}", deviceId);
@@ -199,8 +203,15 @@ void loop() {
   sendToDisplay(0,30, 150,tempJson);
   Serial.print("Json Sent:");
   Serial.println(tempJson);
-  
-   delay(6000);   // delay 60000 miliseconds = 60 sec
+  delay(2000);
+
+  // show waiting
+  display.clear();
+  sendToDisplay(0, 0, "Temp from:" + deviceId);
+  sendToDisplay(0, 15, "Temp:" + String(temp));
+  sendToDisplay(60, 15, "Hum:" + String(humidity) + "%");
+  sendToDisplay(0, 30, "Waiting :" + passData[6] + " Mls" );
+  delay(delayMls);   // delay 60000 miliseconds = 60 sec 1000ms = 1 second
 
 }
 
