@@ -1,17 +1,27 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
-//#include <SD.h>
+
+// include SD library
+#include <SD.h>
+
+// need this lib for Secure SSL for ESP 8266 chip
+#include <WiFiClientSecure.h>  
 
 // Include the correct display library
 // For a connection via I2C using Wire include
-//#include <SPI.h>
+#include <SPI.h>
+
+// http://easycoding.tn/tuniot/demos/code/
+// D2 -> SDA
+// D1 -> SCL      display( address of display, SDA,SCL)
+#include "SSD1306.h"
+SSD1306  display(0x3C, 4, 5);
 
 WiFiUDP ntpUDP;
 
 // setup https client for 8266 SSL client
 WiFiClientSecure client;
-
 
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the

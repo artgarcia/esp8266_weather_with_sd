@@ -9,28 +9,11 @@
    3-10-17 : added url and device id to sd card reader
    4-16-07 : cleaned up code and moved sendtodisplay function th common
            : removed host and sas token from code. made data inputs from sd card
+   4-22-17 : moved libraries to common.h
 */
- 
 
 // include wifi library for nodemcu 8266
-
-#include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
 #include <ESP8266WiFi.h>
-// need this lib for Secure SSL for ESP 8266 chip
-#include <WiFiClientSecure.h>  
-
-// include SD library
-#include <SD.h>
-
-// Include the correct display library
-// For a connection via I2C using Wire include
-#include <SPI.h>
-
-// http://easycoding.tn/tuniot/demos/code/
-// D2 -> SDA
-// D1 -> SCL      display( address of display, SDA,SCL)
-#include "SSD1306.h"
-SSD1306  display(0x3C, 4, 5);
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
