@@ -2,6 +2,10 @@
 	Header file for Node MCU
 */
 
+#include <AzureIoTHub.h>
+#include <AzureIoTProtocol_MQTT.h>
+#include <AzureIoTUtility.h>
+
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
@@ -27,11 +31,20 @@ WiFiUDP ntpUDP;
 // setup https client for 8266 SSL client
 WiFiClientSecure client;
 
+// azure iot client
+AzureIoTHubClient iotHubClient;
+
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
-  
+
+static bool messagePending = false;
+static bool messageSending = false;
+
+const char *onSuccess = "\"Successfully invoke device method\"";
+const char *notFound = "\"No method found\"";
+
 // declare functions
 String createJsonData(String devId, float temp ,float humidity,String keyid);
 void sendToDisplay(int col, int row, String data);
@@ -117,7 +130,7 @@ void httpRequest(String verb, String uri, String host, String sas, String conten
 
 void getSDData(String *passData)
 {
-	String str, netid, pwd, deviceId, url, hostname, sas;
+	String str, netid, pwd, deviceId, url, hostname, sas, timedelay;
 
 	File dataFile;
 	Serial.println("In getSDData");
@@ -186,6 +199,12 @@ void getSDData(String *passData)
 				sas = str;
 				Serial.println(sas);
 			}
+			if (dataFile.find("DELAY:"))
+			{
+				str = dataFile.readStringUntil('|');
+				timedelay = str;
+				Serial.println(timedelay);
+			}
 		}
 		// close the file
 		dataFile.close();
@@ -197,6 +216,7 @@ void getSDData(String *passData)
 	passData[3] = url;
 	passData[4] = hostname;
 	passData[5] = sas;
+	passData[6] = timedelay;
 	 
 }
 
@@ -212,3 +232,148 @@ void sendToDisplay(int col, int row,int len, String data)
 	display.display();
 }
 
+//
+// MQTT 
+// https://github.com/Azure-Samples/iot-hub-feather-huzzah-client-app
+//
+static void sendCallback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void *userContextCallback)
+{
+	if (IOTHUB_CLIENT_CONFIRMATION_OK == result)
+	{
+		LogInfo("Message sent to Azure IoT Hub");
+	}
+	else
+	{
+		LogInfo("Failed to send message to Azure IoT Hub");
+	}
+	messagePending = false;
+}
+
+
+static void sendMessage(IOTHUB_CLIENT_LL_HANDLE iotHubClientHandle, char *buffer, bool temperatureAlert)
+{
+	IOTHUB_MESSAGE_HANDLE messageHandle = IoTHubMessage_CreateFromByteArray((const unsigned char *)buffer, strlen(buffer));
+	if (messageHandle == NULL)
+	{
+		LogInfo("unable to create a new IoTHubMessage");
+	}
+	else
+	{
+		MAP_HANDLE properties = IoTHubMessage_Properties(messageHandle);
+		Map_Add(properties, "temperatureAlert", temperatureAlert ? "true" : "false");
+		LogInfo("Sending message: %s", buffer);
+		if (IoTHubClient_LL_SendEventAsync(iotHubClientHandle, messageHandle, sendCallback, NULL) != IOTHUB_CLIENT_OK)
+		{
+			LogInfo("Failed to hand over the message to IoTHubClient");
+		}
+		else
+		{
+			messagePending = true;
+			LogInfo("IoTHubClient accepted the message for delivery");
+		}
+
+		IoTHubMessage_Destroy(messageHandle);
+	}
+}
+
+
+IOTHUBMESSAGE_DISPOSITION_RESULT receiveMessageCallback(IOTHUB_MESSAGE_HANDLE message, void *userContextCallback)
+{
+	IOTHUBMESSAGE_DISPOSITION_RESULT result;
+	const unsigned char *buffer;
+	size_t size;
+	if (IoTHubMessage_GetByteArray(message, &buffer, &size) != IOTHUB_MESSAGE_OK)
+	{
+		LogInfo("unable to IoTHubMessage_GetByteArray");
+		result = IOTHUBMESSAGE_REJECTED;
+	}
+	else
+	{
+		/*buffer is not zero terminated*/
+		char *temp = (char *)malloc(size + 1);
+
+		if (temp == NULL)
+		{
+			return IOTHUBMESSAGE_ABANDONED;
+		}
+
+		strncpy(temp, (const char *)buffer, size);
+		temp[size] = '\0';
+		LogInfo("Receive C2D message: %s", temp);
+		free(temp);
+	}
+	return IOTHUBMESSAGE_ACCEPTED;
+}
+
+
+void start()
+{
+	LogInfo("Start sending temperature and humidity data");
+	messageSending = true;
+}
+
+void stop()
+{
+	LogInfo("Stop sending temperature and humidity data");
+	messageSending = false;
+}
+
+int deviceMethodCallback(const char *methodName,const unsigned char *payload,size_t size,unsigned char **response,size_t *response_size,void *userContextCallback)
+{
+	LogInfo("Try to invoke method %s", methodName);
+	const char *responseMessage = onSuccess;
+	int result = 200;
+
+	if (strcmp(methodName, "start") == 0)
+	{
+		start();
+	}
+	else if (strcmp(methodName, "stop") == 0)
+	{
+		stop();
+	}
+	else
+	{
+		LogInfo("No method %s found", methodName);
+		responseMessage = notFound;
+		result = 404;
+	}
+
+	*response_size = strlen(responseMessage);
+	*response = (unsigned char *)malloc(*response_size);
+	strncpy((char *)(*response), responseMessage, *response_size);
+
+	return result;
+}
+
+void twinCallback(DEVICE_TWIN_UPDATE_STATE updateState,const unsigned char *payLoad,size_t size,void *userContextCallback)
+{
+	char *temp = (char *)malloc(size + 1);
+	for (int i = 0; i < size; i++)
+	{
+		temp[i] = (char)(payLoad[i]);
+	}
+	temp[size] = '\0';
+	//parseTwinMessage(temp);
+	free(temp);
+}
+
+void parseTwinMessage(char *message)
+{
+	StaticJsonBuffer<256> jsonBuffer;
+	JsonObject &root = jsonBuffer.parseObject(message);
+	if (!root.success())
+	{
+		LogError("parse %s failed", message);
+		return;
+	}
+
+	if (root["desired"]["interval"].success())
+	{
+		//interval = root["desired"]["interval"];
+	}
+	else if (root.containsKey("interval"))
+	{
+		//interval = root["interval"];
+	}
+}
