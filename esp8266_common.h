@@ -1,3 +1,7 @@
+/*
+	Header file for Node MCU
+*/
+
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
