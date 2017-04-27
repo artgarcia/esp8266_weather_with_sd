@@ -24,11 +24,5 @@
     <ClInclude Include="esp8266_common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="__vm\.esp8266_weather_with_sd_NODEMCU.vsarduino.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="WiFiFile.txt" />
   </ItemGroup>
 </Project>
