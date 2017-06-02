@@ -10,14 +10,18 @@
    4-16-07 : cleaned up code and moved sendtodisplay function th common
            : removed host and sas token from code. made data inputs from sd card
    4-22-17 : moved libraries to common.h
+   6-1-2017: start moving to mqtt
 */
 
 // include wifi library for nodemcu 8266
+
 #include <ESP8266WiFi.h>
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
 #include "esp8266_common.h"                 
+
+static IOTHUB_CLIENT_LL_HANDLE iotHubClientHandle;
 
 // for dht11 temp sensor on esp8266 chip
 #include <DHT.h>
@@ -28,6 +32,11 @@ DHT dht(DHTPIN, DHTTYPE);
 String netid, pwd, deviceId, url, host, sas;
 int  timedelay;
 String passData[7];
+
+/*String containing Hostname, Device Id & Device Key in the format:             */
+/*  "HostName=<host_name>;DeviceId=<device_id>;SharedAccessKey=<device_key>"    */
+//static const char* connectionString = "[device connection string]";
+static const char* connectionString = "HostName=ArtTempIOT.azure-devices.net;DeviceId=esp8266v1;SharedAccessKey=8JkUvREdIVJH9RQ+7ew7eWCdKQPNL3w1lkxBCHNFAVg=";
 
 void setup() {
 
@@ -74,62 +83,9 @@ void setup() {
 
   // replace device id in url 
   url.replace("{0}", deviceId);
-
-  // verify variables from sd card got into globals
-  Serial.print("NETID:");
-  Serial.println(netid);
-  Serial.print("PWD:");
-  Serial.println(pwd);
-  Serial.print("DEVICEID:");
-  Serial.println(deviceId);
-  Serial.print("URL:");
-  Serial.println(url);
-
+  
   // initialize wifi
-  WiFi.disconnect();
-  WiFi.begin( (const char*)netid.c_str() , (const char*)pwd.c_str() );
-
-  display.clear();
-  Serial.print("Connecting to SSID:");
-  Serial.println(WiFi.SSID());
-  Serial.println(WiFi.macAddress() );
-  
-  sendToDisplay(0, 0, "Connecting:" + netid);
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-	
-	switch (WiFi.status())	
-	{
-	case WL_CONNECTION_LOST:
-		Serial.println("Connection Lost");
-		break;
-	case WL_CONNECT_FAILED:
-		Serial.println("Connection Failed");
-		break;
-	case WL_DISCONNECTED:
-		Serial.println(" Not Connected");
-		break;
-	default:
-		Serial.print("Status:");
-		Serial.println(WiFi.status());
-		break;
-	}
-
-    sendToDisplay(0,15,"...");
-
-  }
-
-  // confirm connection to WiFi
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  display.clear();
-  sendToDisplay(0,0,"Connected:" + netid);
-  sendToDisplay(0, 15, "IP:" + WiFi.localIP().toString());
-  delay(1000);
+  WifiConnect(netid,pwd);
 
   // start temp sensor
   dht.begin();
@@ -140,20 +96,35 @@ void setup() {
   sendToDisplay(0, 45, "TimeClient Begin");
   delay(1000);
 
+  //Serial.println(" Initalize MQTT");
+  //initIoThubClient();
+  //  
+  //Serial.println(" Make MQTT connection");
+  //iotHubClientHandle = IoTHubClient_LL_CreateFromConnectionString(connectionString, MQTT_Protocol);
+  //if (iotHubClientHandle == NULL)
+  //{
+	 // Serial.println("Failed on IoTHubClient_CreateFromConnectionString");
+	 // while (1);
+  //}
+
+  //IoTHubClient_LL_SetMessageCallback(iotHubClientHandle, receiveMessageCallback, NULL);
+  //IoTHubClient_LL_SetDeviceMethodCallback(iotHubClientHandle, deviceMethodCallback, NULL);
+  //IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, twinCallback, NULL);
+
 }
 
 
 void loop() {
-
+	
   Serial.println("");
   Serial.println("Loop");
 
   timeClient.update();
   String key = (String)timeClient.getEpochTime();
   Serial.println(key);
-
+ 
   display.clear();
-  sendToDisplay(0, 0, "Temp from:" + deviceId);
+  sendToDisplay(0, 0, "Device:" + deviceId);
 
   float t = dht.readTemperature();
   // fahrenheit = t * 1.8 + 32.0;
@@ -170,11 +141,21 @@ void loop() {
 
   Serial.print("Humidity:");
   Serial.println(humidity);
-  
+
+  char messagePayload[MESSAGE_MAX_LEN];
+
   // format data into Json object to pass to Azure
   //String myKeys[] = { "deviceId","Temp","Humidity","KeyValue" };
   String tempJson = createJsonData(deviceId, temp, humidity,key);
- 
+  createJsonBuffer(deviceId, temp, humidity, key, messagePayload);
+
+  /*sendMessage(iotHubClientHandle, messagePayload, false);
+  delay(2000);
+
+  Serial.println(" do work");
+  IoTHubClient_LL_DoWork(iotHubClientHandle);
+  delay(10);
+  */
   // send json to Azure
   httpRequest("POST", url, host, sas, "application/atom+xml;type=entry;charset=utf-8", tempJson);
 
