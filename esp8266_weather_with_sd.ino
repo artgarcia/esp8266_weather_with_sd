@@ -12,39 +12,42 @@
 */
 
 
-// include wifi library for nodemcu 8266
 
-#include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
+// include wifi library for nodemcu 8266
 #include <ESP8266WiFi.h>
+
 // need this lib for Secure SSL for ESP 8266 chip
 #include <WiFiClientSecure.h>  
 
 // include SD library
 #include <SD.h>
 
+// library for BME 280 pressure, temperature and humidity sensor
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
 // Include the correct display library
 // For a connection via I2C using Wire include
 #include <SPI.h>
 
-// http://easycoding.tn/tuniot/demos/code/
-// D2 -> SDA
-// D1 -> SCL      display( address of display, SDA,SCL)
+// display adapter
 #include "SSD1306.h"
-SSD1306  display(0x3C, 4, 5);
 
 // common include file with additional user functions ise 
 // To use tabs with a .h extension, you need to #include it (using "double quotes" not <angle brackets>).     
 #include "esp8266_common.h"                 
 
-// for dht11 temp sensor on esp8266 chip
-#include <DHT.h>
-#define DHTPIN 2 // D4 on nodemcu = gpio 2 
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
 String netid, pwd, deviceId, url, host, sas;
 long duration, distance, lastDistance;
-String passData[6];
+int waittime;
+String passData[10];
+
+// http://patriot-geek.blogspot.com/2017/03/esp8266-bme280-and-oled-displays.html
+// The ESP8266 has exactly one I2C bus, so the two devices (the BME280 and the OLED display) must be on that one I2C bus!
+// see fritz diagram. bme280 and lcd are wired to same pins. d1 & d2
+#define SEALEVELPRESSURE_HPA (1013.25)
+Adafruit_BME280 bme; // I2C
+
 
 void setup() {
 
@@ -76,6 +79,13 @@ void setup() {
   pwd = passData[1];
   deviceId = passData[2];
   url = passData[3];
+  waittime = (int)passData[6].toInt();
+
+  display.clear();
+  sendToDisplay(0, 15, "SSID:" + netid);
+  sendToDisplay(0, 30, "pwd :" + pwd);
+  sendToDisplay(0, 45, "Device Id:" + deviceId);
+  delay(2000);
 
   // endpoint to use to send message /devices/{device name}/messages/events?api-version=2016-02-03
   // host =  address for your Azure IoT Hub
@@ -88,17 +98,7 @@ void setup() {
 
   // replace device id in url 
   url.replace("{0}", deviceId);
-
-  // verify variables from sd card got into globals
-  Serial.print("NETID:");
-  Serial.println(netid);
-  Serial.print("PWD:");
-  Serial.println(pwd);
-  Serial.print("DEVICEID:");
-  Serial.println(deviceId);
-  Serial.print("URL:");
-  Serial.println(url);
-
+  
   // initialize wifi
   WiFi.disconnect();
   WiFi.begin( (const char*)netid.c_str() , (const char*)pwd.c_str() );
@@ -146,8 +146,15 @@ void setup() {
   delay(1000);
 
   // start temp sensor
-  dht.begin();
-  sendToDisplay(0, 30, "Sensor Begin");
+  bool status;
+  status = bme.begin();
+  if (!status) {
+	  Serial.println("Could not find a valid BME280 sensor, check wiring!");
+	  sendToDisplay(0, 30, "BME 280 Error");
+	  while (1);
+  }
+
+  sendToDisplay(0, 30, "bme280  Begin");
 
   // start time client - used to get curren time.
   timeClient.begin();
@@ -169,34 +176,45 @@ void loop() {
   display.clear();
   sendToDisplay(0, 0, "Temp from:" + deviceId);
 
-  float t = dht.readTemperature();
+  float t = bme.readTemperature();
   // fahrenheit = t * 1.8 + 32.0;
   float temp = t *1.8 + 32;
   delay(200);
-  sendToDisplay(0, 15, "Temp:" + String(temp));
+  sendToDisplay(0, 15, "Temperature : " + String(temp));
 
-  float humidity = dht.readHumidity();
+  float pressure = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  sendToDisplay(0, 30, "Pressure : " + String(pressure) );
+
+  Serial.print("Approx. Altitude = ");
+  Serial.print(pressure);
+
+  float humidity = bme.readHumidity();
   delay(200);
-  sendToDisplay(60, 15, "Hum:" + String(humidity) + "%" );
+  sendToDisplay(0, 45, "Humidity : " + String(humidity) + "%" );
 
   Serial.print("Temperature:");
   Serial.println(temp);
 
   Serial.print("Humidity:");
   Serial.println(humidity);
-  
+  delay(1000);
+
   // format data into Json object to pass to Azure
   //String myKeys[] = { "deviceId","Temp","Humidity","KeyValue" };
-  String tempJson = createJsonData(deviceId, temp, humidity,key);
+  String tempJson = createJsonData(deviceId, temp, humidity,pressure,key);
  
   // send json to Azure
   httpRequest("POST", url, host, sas, "application/atom+xml;type=entry;charset=utf-8", tempJson);
+  delay(1000);
 
   sendToDisplay(0,30, 150,tempJson);
   Serial.print("Json Sent:");
   Serial.println(tempJson);
   
-   delay(6000);   // delay 60000 miliseconds = 60 sec
+  display.clear();
+  sendToDisplay(0, 0, "Temp from:" + deviceId);
+  sendToDisplay(0, 30, "Waiting MS :" + passData[6]);
+  delay(waittime);   // delay 60000 miliseconds = 60 sec
 
 }
 

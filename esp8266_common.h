@@ -1,29 +1,32 @@
+
+
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
-//#include <SD.h>
-
-// Include the correct display library
-// For a connection via I2C using Wire include
-//#include <SPI.h>
 
 WiFiUDP ntpUDP;
 
 // setup https client for 8266 SSL client
 WiFiClientSecure client;
 
-
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
   
+
+// http://easycoding.tn/tuniot/demos/code/
+// D2 -> SDA
+// D1 -> SCL      display( address of display, SDA,SCL)
+#define OLED_address  0x3c                         
+SSD1306  display(OLED_address,4,5);
+
 // declare functions
-String createJsonData(String devId, float temp ,float humidity,String keyid);
+String createJsonData(String devId, float temp ,float humidity,float pressure,String keyid);
 void sendToDisplay(int col, int row, String data);
 void sendToDisplay(int col, int row, int len, String data);
 
-String createJsonData(String devId, float temp, float humidity,String keyid)
+String createJsonData(String devId, float temp, float humidity,float pressure,String keyid)
 {
 
   // create json object
@@ -35,6 +38,7 @@ String createJsonData(String devId, float temp, float humidity,String keyid)
   root["DeviceId"] = devId;
   root["KeyId"] = keyid;
   root["temperature"] = temp;
+  root["pressure"] = pressure;
   root["humidity"] = humidity;
 
   // convert to string
@@ -103,17 +107,18 @@ void httpRequest(String verb, String uri, String host, String sas, String conten
 
 void getSDData(String *passData)
 {
-	String str, netid, pwd, deviceId, url, hostname, sas;
+	String str, netid, pwd, deviceId, url, hostname, sas, wait_time;
 
 	File dataFile;
-	Serial.println("In getSDData");
-
+	
 	// initialize sd card 
 	// for nodemcu use begin() else use begin(4)
 	Serial.print("Initializing SD card...");
+	sendToDisplay(0, 15, "Reading SD Card ");
 
 	if (!SD.begin()) {
 		Serial.println("initialization failed!");
+		sendToDisplay(0, 15, "SD Card failed");
 		return;
 	}
 	Serial.println("initialization done.");
@@ -126,9 +131,6 @@ void getSDData(String *passData)
 	if (dataFile)
 	{
 		Serial.println("data from sd card");
-		display.clear();
-		sendToDisplay(0, 0, "Data From Card");
-
 		while (dataFile.available())
 		{
 			if (dataFile.find("SSID:"))
@@ -136,40 +138,42 @@ void getSDData(String *passData)
 				str = dataFile.readStringUntil('|');
 				netid = str;
 				Serial.println(netid);
-				sendToDisplay(0, 15, netid);
+				//sendToDisplay(0, 15, netid);
 			}
 			if (dataFile.find("PASSWORD:"))
 			{
 				str = dataFile.readStringUntil('|');
 				pwd = str;
 				Serial.println(pwd);
-				//sendToDisplay(0,30, pwd);
 			}
 			if (dataFile.find("DEVICEID:"))
 			{
 				str = dataFile.readStringUntil('|');
 				deviceId = str;
 				Serial.println(deviceId);
-				sendToDisplay(0,30, deviceId);
 			}
 			if (dataFile.find("URL:"))
 			{
 				str = dataFile.readStringUntil('|');
 				url = str;
 				Serial.println(url);
-				//sendToDisplay(50, 30, url);
 			}
 			if (dataFile.find("HOSTNAME:"))
 			{
 				str = dataFile.readStringUntil('|');
 				hostname = str;
 				Serial.println(hostname);
-				sendToDisplay(0, 45, hostname);
 			}
 			if (dataFile.find("SAS:"))
 			{
 				str = dataFile.readStringUntil('|');
 				sas = str;
+				Serial.println(sas);
+			}
+			if (dataFile.find("DELAY:"))
+			{
+				str = dataFile.readStringUntil('|');
+				wait_time = str;
 				Serial.println(sas);
 			}
 		}
@@ -183,6 +187,11 @@ void getSDData(String *passData)
 	passData[3] = url;
 	passData[4] = hostname;
 	passData[5] = sas;
+	passData[6] = wait_time;
+
+	passData[7] = hostname + "/" + deviceId;							//iothub_user
+	passData[8] = "devices/" + deviceId + "/messages/devicebound/#";	//iothub_subscribe_endpoinp
+	passData[9] = "devices/" + deviceId + "/messages/events/";			//iothub_publish_endpoint
 
 }
 
